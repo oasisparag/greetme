@@ -1,0 +1,38 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyAllActionsForRootUser",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "aws:PrincipalArn": "arn:aws:iam::*:root"
+        }
+      }
+    },
+    {
+      "Sid": "AllowRootUserExceptions",
+      "Effect": "Allow",
+      "Action": [
+        "iam:*AccountPasswordPolicy",
+        "iam:*AccountAlias",
+        "iam:CreateAccountAlias",
+        "iam:DeleteAccountAlias",
+        "iam:GenerateCredentialReport",
+        "iam:GetAccountSummary",
+        "iam:GetCredentialReport",
+        "iam:ListAccountAliases",
+        "iam:ListVirtualMFADevices",
+        "iam:UpdateAccountPasswordPolicy"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "aws:PrincipalArn": "arn:aws:iam::*:root"
+        }
+      }
+    }
+  ]
+}
