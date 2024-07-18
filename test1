@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyRootUserActions",
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:*MFA*",
+        "organizations:DescribeOrganization",
+        "organizations:ListAccounts",
+        "organizations:ListRoots",
+        "organizations:DescribeAccount",
+        "organizations:DescribeOrganizationalUnit",
+        "organizations:ListOrganizationalUnitsForParent",
+        "organizations:ListChildren",
+        "organizations:ListPolicies",
+        "organizations:DescribePolicy",
+        "organizations:ListTargetsForPolicy",
+        "organizations:ListAWSServiceAccessForOrganization",
+        "organizations:EnableAWSServiceAccess",
+        "organizations:DisableAWSServiceAccess",
+        "organizations:ListCreateAccountStatus",
+        "organizations:ListHandshakesForAccount",
+        "organizations:AcceptHandshake",
+        "organizations:DeclineHandshake",
+        "organizations:ListHandshakeErrors",
+        "organizations:DescribeHandshake",
+        "organizations:ListHandshakesForOrganization",
+        "organizations:ListParents",
+        "organizations:ListPoliciesForTarget",
+        "organizations:ListRoots",
+        "organizations:DescribeCreateAccountStatus",
+        "organizations:ListAccountsForParent"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalAccount": "root"
+        }
+      }
+    }
+  ]
+}
