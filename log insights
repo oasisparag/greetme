@@ -1,16 +1,17 @@
-fields @timestamp, eventName, requestParameters.instanceId
+fields @timestamp, eventName, requestParameters.instancesSet.items.instanceId
 | filter eventSource = "ec2.amazonaws.com"
 | filter eventName = "RunInstances"
-| filter strftime(@timestamp, "%Y-%m") = strftime(now(), "%Y-%m")
+| filter year(@timestamp) = year(now()) and month(@timestamp) = month(now())
 | sort @timestamp desc
-| display @timestamp, requestParameters.instanceId
-
+| limit 100
+| display @timestamp, requestParameters.instancesSet.items.instanceId
 
 
 
 fields @timestamp, eventName, requestParameters.instancesSet.items.instanceId
 | filter eventSource = "ec2.amazonaws.com"
 | filter eventName = "TerminateInstances"
-| filter strftime(@timestamp, "%Y-%m") = strftime(now(), "%Y-%m")
+| filter year(@timestamp) = year(now()) and month(@timestamp) = month(now())
 | sort @timestamp desc
+| limit 100
 | display @timestamp, requestParameters.instancesSet.items.instanceId
