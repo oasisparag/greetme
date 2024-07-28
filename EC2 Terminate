@@ -1,0 +1,98 @@
+import boto3
+import csv
+import json
+from datetime import datetime
+from io import StringIO
+
+def lambda_handler(event, context):
+    # Initialize boto3 clients
+    ec2_client = boto3.client('ec2')
+    cloudtrail_client = boto3.client('cloudtrail')
+    s3_client = boto3.client('s3')
+    
+    # Define the bucket and file names (using environment variables for flexibility)
+    bucket_name = 's3dynamodbtest1'
+    csv_file_name = f"terminated_instances_{datetime.now().strftime('%Y_%m')}.csv"
+    
+    # Get the current month and year
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    
+    # Define the time range for the lookup (current month)
+    start_time = datetime(current_year, current_month, 1)
+    end_time = datetime.now()
+    
+    # Look up termination events in CloudTrail
+    terminated_instance_events = []
+    next_token = None
+    
+    try:
+        while True:
+            if next_token:
+                response = cloudtrail_client.lookup_events(
+                    LookupAttributes=[
+                        {
+                            'AttributeKey': 'EventName',
+                            'AttributeValue': 'TerminateInstances'
+                        }
+                    ],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    NextToken=next_token
+                )
+            else:
+                response = cloudtrail_client.lookup_events(
+                    LookupAttributes=[
+                        {
+                            'AttributeKey': 'EventName',
+                            'AttributeValue': 'TerminateInstances'
+                        }
+                    ],
+                    StartTime=start_time,
+                    EndTime=end_time
+                )
+            
+            for event in response['Events']:
+                event_time = event['EventTime']
+                event_detail = event['CloudTrailEvent']
+                event_detail_json = json.loads(event_detail)
+                terminated_instance_ids = [item['instanceId'] for item in event_detail_json['requestParameters']['instancesSet']['items']]
+                for instance_id in terminated_instance_ids:
+                    terminated_instance_events.append({
+                        'InstanceId': instance_id,
+                        'TerminationTime': event_time
+                    })
+            
+            next_token = response.get('NextToken')
+            if not next_token:
+                break
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f'Error looking up events in CloudTrail: {str(e)}'
+        }
+    
+    # Create CSV
+    csv_buffer = StringIO()
+    csv_writer = csv.writer(csv_buffer)
+    csv_writer.writerow(['InstanceId', 'TerminationTime'])
+    
+    for event in terminated_instance_events:
+        csv_writer.writerow([
+            event['InstanceId'],
+            event['TerminationTime'].strftime('%Y-%m-%d %H:%M:%S')
+        ])
+    
+    # Upload CSV to S3
+    try:
+        s3_client.put_object(Bucket=bucket_name, Key=csv_file_name, Body=csv_buffer.getvalue())
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f'Error uploading CSV to S3: {str(e)}'
+        }
+    
+    return {
+        'statusCode': 200,
+        'body': f'Successfully uploaded {csv_file_name} to {bucket_name}'
+    }
