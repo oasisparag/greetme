@@ -1,0 +1,102 @@
+import boto3
+import csv
+import json
+from datetime import datetime, timezone
+from io import StringIO
+
+def lambda_handler(event, context):
+    try:
+        # Initialize boto3 clients
+        ec2_client = boto3.client('ec2')
+        cloudtrail_client = boto3.client('cloudtrail')
+        s3_client = boto3.client('s3')
+        
+        # Define the bucket and file names
+        bucket_name = 's3dynamodbtest1'
+        csv_file_name = f"ec2_instances_created_{datetime.now(timezone.utc).strftime('%Y_%m')}.csv"
+        
+        # Get the current month and year
+        current_month = datetime.now(timezone.utc).month
+        current_year = datetime.now(timezone.utc).year
+        
+        # Define the time range for the lookup (current month)
+        start_time = datetime(current_year, current_month, 1, tzinfo=timezone.utc)
+        if current_month == 12:
+            end_time = datetime(current_year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end_time = datetime(current_year, current_month + 1, 1, tzinfo=timezone.utc)
+        
+        # Look up events in CloudTrail
+        instance_creation_events = []
+        paginator = cloudtrail_client.get_paginator('lookup_events')
+        for page in paginator.paginate(
+            LookupAttributes=[
+                {
+                    'AttributeKey': 'EventName',
+                    'AttributeValue': 'RunInstances'
+                }
+            ],
+            StartTime=start_time,
+            EndTime=end_time
+        ):
+            for event in page['Events']:
+                event_time = event['EventTime']
+                event_detail = event['CloudTrailEvent']
+                event_detail_json = json.loads(event_detail)
+                created_instance_ids = [item['instanceId'] for item in event_detail_json['responseElements']['instancesSet']['items']]
+                for instance_id in created_instance_ids:
+                    instance_creation_events.append({
+                        'InstanceId': instance_id,
+                        'CreationTime': event_time
+                    })
+        
+        # Describe EC2 instances to get their current state and name
+        instance_info = {}
+        if instance_creation_events:
+            instance_ids = [event['InstanceId'] for event in instance_creation_events]
+            paginator = ec2_client.get_paginator('describe_instances')
+            for page in paginator.paginate(InstanceIds=instance_ids):
+                for reservation in page['Reservations']:
+                    for instance in reservation['Instances']:
+                        instance_id = instance['InstanceId']
+                        tags = instance.get('Tags', [])
+                        name_tag = next((tag['Value'] for tag in tags if tag['Key'] == 'Name'), 'N/A')
+                        state = instance['State']['Name']
+                        instance_info[instance_id] = {
+                            'Name': name_tag,
+                            'State': state
+                        }
+        
+        # Combine instance creation events with their current state and name
+        final_events = []
+        for event in instance_creation_events:
+            instance_id = event['InstanceId']
+            if instance_id in instance_info:
+                final_events.append({
+                    'InstanceId': instance_id,
+                    'Name': instance_info[instance_id]['Name'],
+                    'CreationTime': event['CreationTime'],
+                    'State': instance_info[instance_id]['State']
+                })
+        
+        # Create CSV
+        csv_buffer = StringIO()
+        csv_writer = csv.writer(csv_buffer)
+        csv_writer.writerow(['InstanceId', 'Name', 'CreationTime', 'State'])
+        
+        for event in final_events:
+            csv_writer.writerow([event['InstanceId'], event['Name'], event['CreationTime'].strftime('%Y-%m-%d %H:%M:%S'), event['State']])
+        
+        # Upload CSV to S3
+        s3_client.put_object(Bucket=bucket_name, Key=csv_file_name, Body=csv_buffer.getvalue())
+        
+        return {
+            'statusCode': 200,
+            'body': f'Successfully uploaded {csv_file_name} to {bucket_name}'
+        }
+    
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': str(e)
+        }
